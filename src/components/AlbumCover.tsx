@@ -12,9 +12,14 @@ export const AlbumCover: FunctionComponent<IAlbumProps> = ({ mediaUrl }) => {
 
   // changes the height of the image to the current height of the window
   const getMediaUrl = (url: string) => {
-    const newUrl = new URL(url);
-    newUrl.searchParams.set("height", getHeight().toString());
-    return newUrl.toString();
+    try {
+      const newUrl = new URL(url);
+      newUrl.searchParams.set("height", getHeight().toString());
+      return newUrl.toString();
+    } catch {
+      // A malformed URL should just show a broken image, never crash the render.
+      return url;
+    }
   };
 
   if (!mediaUrl) {

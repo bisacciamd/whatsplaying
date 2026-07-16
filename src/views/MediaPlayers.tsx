@@ -26,7 +26,7 @@ export const MediaPlayers: FunctionComponent = () => {
   }, [mediaPlayers, getMediaPlayers]);
 
   useEffect(() => {
-    // if no player has been playing for 60 sec, redirect to /albums
+    // if the selected player has been stopped for 30 sec, redirect to /albums
     if (autoDisplayAlbums && (selectedMediaPlayer?.state === "stopped" || selectedMediaPlayer?.state === "unknown")) {
       setShowAlbumTimeout(
         setTimeout(() => {

@@ -144,7 +144,7 @@ export const Configuration: FunctionComponent = () => {
                   album gallery (instead of a black page). Disabled by default, you can enable this behaviour below.
                 </Typography>
                 <Switch
-                  value={autoDisplayAlbums}
+                  checked={autoDisplayAlbums}
                   aria-label="display albums when all stopped"
                   onChange={(e) => setAutoDisplayAlbums(e.target.checked)}
                 />

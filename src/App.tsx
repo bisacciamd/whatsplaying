@@ -7,6 +7,7 @@ import { Configuration } from "./views/Configuration";
 import { Notification } from "./components/Notification";
 import { useEffect } from "react";
 import { Spinner } from "./components/Spinner.tsx";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 function App() {
   const { configuration, loadConfig } = useUserStore((state) => state);
@@ -30,22 +31,24 @@ function App() {
   return (
     <Box>
       <Notification />
-      <Switch>
-        <Route path="/config">
-          <Configuration />
-        </Route>
+      <ErrorBoundary>
+        <Switch>
+          <Route path="/config">
+            <Configuration />
+          </Route>
 
-        <Route path="/albums">
-          <MusicLibrary />
-        </Route>
+          <Route path="/albums">
+            <MusicLibrary />
+          </Route>
 
-        <Route path="/">
-          <MediaPlayers />
-        </Route>
+          <Route path="/">
+            <MediaPlayers />
+          </Route>
 
-        {/* Default route in a switch */}
-        <Route>404: No such page!</Route>
-      </Switch>
+          {/* Default route in a switch */}
+          <Route>404: No such page!</Route>
+        </Switch>
+      </ErrorBoundary>
     </Box>
   );
 }
