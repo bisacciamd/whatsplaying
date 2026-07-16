@@ -1,9 +1,12 @@
 export interface BaseMediaPlayerServer {
   client_identifier: string;
   protocol: string;
+  address: string;
   port: number;
   uri: string;
 }
+
+export type PlexConnection = PlexResource["connections"][number];
 
 /**
  * PlexUser interface

@@ -1,9 +1,9 @@
 import { create } from "zustand";
 import { PlexUser } from "./server.interface";
 import { Lyrics, MediaPlayer, MediaPlayerState } from "./media-player.type";
-import { getLyrics, sendPlayBackCommand, setParameterCommand, updateMediaPlayer } from "./media_player";
+import { getLyrics, playOnPlayer, sendPlayBackCommand, setParameterCommand, updateMediaPlayer } from "./media_player";
 import { getMediaPlayers, getUser } from "./server";
-import { getLibrary } from "./library";
+import { getLibrary, getPlaylists } from "./library";
 import { LibraryState } from "./library.interface";
 import { devtools } from "zustand/middleware";
 import { IConfig, loadConfig } from "./utils/fetchConfig.ts";
@@ -54,15 +54,41 @@ export const useUserStore = create<UserStoreState>(
 
 let commandId = 0;
 
+const pushError = (message: string) => {
+  useMediaPlayerStore.setState((state) => ({ error: [...state.error, message] }));
+};
+
 export const useLibraryStore = create<LibraryState>(
   devtools(
     (set) => ({
       library: [],
+      playlists: [],
       getLibrary: async (player: MediaPlayer) => {
         const library = await getLibrary(player, useUserStore.getState().configuration.hideLibraries);
         set({ library });
       },
-      // ... other methods
+      getPlaylists: async (player: MediaPlayer) => {
+        try {
+          const playlists = await getPlaylists(player);
+          set({ playlists });
+        } catch (e: any) {
+          pushError(e?.message ?? "Could not load playlists");
+        }
+      },
+      playAlbum: async (player: MediaPlayer, ratingKey: string) => {
+        try {
+          await playOnPlayer(player, `/library/metadata/${ratingKey}`, commandId++);
+        } catch (e: any) {
+          pushError(e?.message ?? "Could not start album");
+        }
+      },
+      playPlaylist: async (player: MediaPlayer, ratingKey: string) => {
+        try {
+          await playOnPlayer(player, `/playlists/${ratingKey}/items`, commandId++);
+        } catch (e: any) {
+          pushError(e?.message ?? "Could not start playlist");
+        }
+      },
     }),
     { name: "LibraryStore" },
   ) as never,
@@ -175,7 +201,10 @@ export const useMediaPlayerStore = create<MediaPlayerState>(
       setShuffle: async (player: MediaPlayer): Promise<void> => {
         try {
           const shouldShuffle = player.shuffle === "1" ? "0" : "1";
-          await sendPlayBackCommand(player, `shuffle=${shouldShuffle}`);
+          // Shuffle/repeat are setParameters commands, not playback verbs. The old
+          // code sent them via sendPlayBackCommand, producing the invalid URL
+          // /player/playback/shuffle=1.
+          await setParameterCommand(player, `shuffle=${shouldShuffle}`);
           await get().update(player);
         } catch (e: any) {
           set({ error: [...get().error, e.message] });
@@ -189,7 +218,7 @@ export const useMediaPlayerStore = create<MediaPlayerState>(
           } else if (player.repeat === "1") {
             repeat = "2";
           }
-          await sendPlayBackCommand(player, `repeat=${repeat}`);
+          await setParameterCommand(player, `repeat=${repeat}`);
           await get().update(player);
         } catch (e: any) {
           set({ error: [...get().error, e.message] });
@@ -214,7 +243,7 @@ export const useMediaPlayerStore = create<MediaPlayerState>(
       },
       getLyrics: async (player: MediaPlayer): Promise<Lyrics | undefined> => {
         try {
-          return getLyrics(player);
+          return await getLyrics(player);
         } catch (e: any) {
           set({ error: [...get().error, e.message] });
         }

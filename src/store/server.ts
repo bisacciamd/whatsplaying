@@ -1,21 +1,32 @@
 // @ts-ignore
 import XMLParser from "react-xml-parser";
-import { BaseMediaPlayerServer, PlexResource, PlexSonosResource, PlexUser } from "./server.interface";
+import { BaseMediaPlayerServer, PlexConnection, PlexResource, PlexSonosResource, PlexUser } from "./server.interface";
 import { MediaPlayer } from "./media-player.type";
+import { getClientIdentifier } from "./utils/clientIdentifier";
 
 const getHeaders = (token: string) => ({
   "X-Plex-Version": "1.0",
-  "X-Plex-Product": "Plex-Product",
-  "X-Plex-Client-Identifier": "Plex-Client-Identifier",
-  "X-Plex-Device": "Plex-Device",
-  "X-Plex-Platform": "Plex-Platform",
-  "X-Plex-Platform-Version": "Plex-Platform-Version",
+  "X-Plex-Product": "What's Playing",
+  "X-Plex-Client-Identifier": getClientIdentifier(),
+  "X-Plex-Device": "Web",
+  "X-Plex-Platform": "Web",
+  "X-Plex-Platform-Version": "1.0",
   "X-Plex-Provides": "player",
-  "X-Plex-Device-Name": "Plex-Device-Name",
+  "X-Plex-Device-Name": "What's Playing",
   "X-Plex-Token": token,
   "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
   Accept: "application/json",
 });
+
+/**
+ * Picks the best connection for a resource: prefer a direct local one, then any
+ * non-relay connection, falling back to the first. Blindly taking connections[0]
+ * (the old behaviour) picked whatever Plex happened to list first — often a relay
+ * or WAN address that fails on the home LAN (upstream issue #13).
+ */
+function selectConnection(connections: PlexConnection[]): PlexConnection {
+  return connections.find((c) => c.local && !c.relay) ?? connections.find((c) => !c.relay) ?? connections[0];
+}
 
 export async function getUser(token: string): Promise<PlexUser> {
   const response = await fetch("https://plex.tv/api/v2/user", {
@@ -113,11 +124,13 @@ function getServerInfo(resources: PlexResource[]): BaseMediaPlayerServer | undef
   if (!server) {
     return undefined;
   }
+  const connection = selectConnection(server.connections);
   return {
     client_identifier: server.clientIdentifier,
-    protocol: server.connections[0].protocol,
-    port: server.connections[0].port,
-    uri: server.connections[0].uri,
+    protocol: connection.protocol,
+    address: connection.address,
+    port: connection.port,
+    uri: connection.uri,
   };
 }
 
@@ -133,38 +146,48 @@ async function getClients(
   // should find all the resources that are not the server, returning an array
   const clients = resources.filter((resource) => resource.provides.match("client"));
 
-  // iterate over the clients and do a fetch to get the client info, if fetch fails, remove the client from the array
-  for (const client of clients) {
-    const url = `${client.connections[0].uri}/resources`;
-    await fetchWithTimeout(url, {
-      headers: getHeaders(token),
-      method: "GET",
-    }).catch(() => {
-      clients.splice(clients.indexOf(client), 1);
-    });
-  }
+  // Probe every client in parallel and keep only the reachable ones. The old
+  // code iterated while splicing the same array in a .catch(), which skipped the
+  // element after every unreachable one (leaving ghost devices in the carousel)
+  // and ran the 5s timeouts sequentially.
+  const probed = await Promise.all(
+    clients.map(async (client) => {
+      const connection = selectConnection(client.connections);
+      try {
+        await fetchWithTimeout(`${connection.uri}/resources`, {
+          headers: getHeaders(token),
+          method: "GET",
+        });
+        return { client, connection };
+      } catch {
+        return null;
+      }
+    }),
+  );
 
-  return clients.map((client) => ({
-    name: client.name,
-    product: client.product,
-    productVersion: client.platformVersion,
-    clientIdentifier: client.clientIdentifier,
-    protocol: client.connections[0].protocol,
-    address: client.connections[0].address,
-    port: client.connections[0].port,
-    uri: client.connections[0].uri,
-    token: token,
-    server: server,
-    state: "unknown",
-    media_duration: 0,
-    media_position: 0,
-    shuffle: "0",
-    repeat: "0",
-    volume_level: 0,
-    is_volume_muted: false,
-    duration: 0,
-    time: 0,
-  }));
+  return probed
+    .filter((entry): entry is { client: PlexResource; connection: PlexConnection } => entry !== null)
+    .map(({ client, connection }) => ({
+      name: client.name,
+      product: client.product,
+      productVersion: client.platformVersion,
+      clientIdentifier: client.clientIdentifier,
+      protocol: connection.protocol,
+      address: connection.address,
+      port: connection.port,
+      uri: connection.uri,
+      token: token,
+      server: server,
+      state: "unknown",
+      media_duration: 0,
+      media_position: 0,
+      shuffle: "0",
+      repeat: "0",
+      volume_level: 0,
+      is_volume_muted: false,
+      duration: 0,
+      time: 0,
+    }));
 }
 
 function fetchWithTimeout(url: string, options: RequestInit, timeout = 5000): Promise<Response> {
