@@ -54,7 +54,7 @@ export async function updateMediaPlayer(mediaPlayer: MediaPlayer, commandId: num
       const isTidal = currentlyPlaying.attribution === "com.tidal";
       let thumbUrl = isTidal ? currentlyPlaying?.parentThumb : currentlyPlaying?.thumb;
       const thumbSize = "width=1080&height=1080";
-      const thumbParameters = `url=${thumbUrl}&quality=90&format=png&X-Plex-Token=${mediaPlayer.token}`;
+      const thumbParameters = `url=${thumbUrl}&quality=90&format=jpeg&X-Plex-Token=${mediaPlayer.token}`;
       // The /photo/:/transcode endpoint lives on the Plex Media Server, so build
       // it from the server URI. The old code used the *client* player's raw
       // address:port over hard-coded https, which failed on many LANs and left

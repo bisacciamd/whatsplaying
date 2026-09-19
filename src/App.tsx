@@ -1,6 +1,6 @@
 import { Route, Switch, useLocation } from "wouter";
 import { useUserStore } from "./store/store";
-import { Box } from "@mui/material";
+import { Box, CssBaseline, ThemeProvider } from "@mui/material";
 import { MediaPlayers } from "./views/MediaPlayers";
 import MusicLibrary from "./views/MusicLibrary";
 import { Configuration } from "./views/Configuration";
@@ -8,6 +8,7 @@ import { Notification } from "./components/Notification";
 import { useEffect } from "react";
 import { Spinner } from "./components/Spinner.tsx";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { theme } from "./theme";
 
 function App() {
   const { configuration, loadConfig } = useUserStore((state) => state);
@@ -25,13 +26,20 @@ function App() {
   }, [configuration.loaded, loadConfig, setLocation]);
 
   if (!configuration.loaded) {
-    return <Spinner open />;
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Spinner open />
+      </ThemeProvider>
+    );
   }
 
   return (
-    <Box>
-      <Notification />
-      <ErrorBoundary>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Box>
+        <Notification />
+        <ErrorBoundary>
         <Switch>
           <Route path="/config">
             <Configuration />
@@ -48,8 +56,9 @@ function App() {
           {/* Default route in a switch */}
           <Route>404: No such page!</Route>
         </Switch>
-      </ErrorBoundary>
-    </Box>
+        </ErrorBoundary>
+      </Box>
+    </ThemeProvider>
   );
 }
 

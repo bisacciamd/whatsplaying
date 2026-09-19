@@ -43,7 +43,7 @@ export const useUserStore = create<UserStoreState>(
         preferredOrder: [],
         hideLibraries: [],
         plexToken: "",
-        autoDisplayAlbums: false,
+        autoDisplayAlbums: true,
         intervalBetweenAlbums: 30,
         loaded: false,
       },

@@ -5,6 +5,7 @@ import { MediaDisplay } from "../components/MediaDisplay";
 import { useMediaPlayerStore, useUserStore } from "../store/store";
 import { Spinner } from "../components/Spinner";
 import { useLocation } from "wouter";
+import { isAmbient } from "../ambient";
 
 /**
  * Carousel component to display the media players.
@@ -18,6 +19,10 @@ export const MediaPlayers: FunctionComponent = () => {
   } = useUserStore((state) => state);
   const [, setLocation] = useLocation();
   const [showAlbumTimeout, setShowAlbumTimeout] = useState<NodeJS.Timeout | undefined>();
+  const ambient = isAmbient();
+  // In ambient (TV screensaver) mode always fall back to the showcase, and sooner.
+  const shouldShowAlbums = ambient || autoDisplayAlbums;
+  const idleDelay = ambient ? 8000 : 30000;
 
   useEffect(() => {
     if (!mediaPlayers?.length && plexToken) {
@@ -26,12 +31,12 @@ export const MediaPlayers: FunctionComponent = () => {
   }, [mediaPlayers, getMediaPlayers]);
 
   useEffect(() => {
-    // if the selected player has been stopped for 30 sec, redirect to /albums
-    if (autoDisplayAlbums && (selectedMediaPlayer?.state === "stopped" || selectedMediaPlayer?.state === "unknown")) {
+    // if the selected player has been stopped for a while, redirect to /albums
+    if (shouldShowAlbums && (selectedMediaPlayer?.state === "stopped" || selectedMediaPlayer?.state === "unknown")) {
       setShowAlbumTimeout(
         setTimeout(() => {
           setLocation("/albums");
-        }, 30000),
+        }, idleDelay),
       );
     } else {
       if (showAlbumTimeout) {
@@ -45,7 +50,7 @@ export const MediaPlayers: FunctionComponent = () => {
         clearTimeout(showAlbumTimeout);
       }
     };
-  }, [selectedMediaPlayer?.state, autoDisplayAlbums]);
+  }, [selectedMediaPlayer?.state, shouldShowAlbums, idleDelay, setLocation]);
 
   const customRenderItem = (
     item: any,

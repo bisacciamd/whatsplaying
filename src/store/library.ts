@@ -9,7 +9,7 @@ const MAX_ALBUMS_PER_LIBRARY = 250;
 
 const buildThumb = (player: MediaPlayer, thumbUrl: string | undefined): string => {
   const thumbSize = "width=1080&height=1080";
-  const thumbParameters = `url=${thumbUrl}&quality=90&format=png&X-Plex-Token=${player.token}`;
+  const thumbParameters = `url=${thumbUrl}&quality=90&format=jpeg&X-Plex-Token=${player.token}`;
   // Build against the server URI. The old code produced a scheme-less
   // "address:port/..." string; `new URL()` in <AlbumCover> then threw and blanked
   // the whole Album Library to a black screen (upstream issue #12).

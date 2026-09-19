@@ -65,7 +65,7 @@ async function fetchConfig(): Promise<IConfig> {
       preferredOrder: [],
       hideLibraries: [],
       plexToken: "",
-      autoDisplayAlbums: false,
+      autoDisplayAlbums: true,
       intervalBetweenAlbums: 30,
       loaded: true,
     };

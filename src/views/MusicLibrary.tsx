@@ -1,76 +1,141 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Box, Container, Grid, IconButton, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Box, Grid, IconButton, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
 import { ArrowBack, PlayArrow } from "@mui/icons-material";
 import { Carousel } from "react-responsive-carousel";
 import { AlbumCover } from "../components/AlbumCover";
 import { useLocation } from "wouter";
 import { useLibraryStore, useMediaPlayerStore, useUserStore } from "../store/store";
 import { Spinner } from "../components/Spinner";
+import { isAmbient } from "../ambient";
 
 type LibraryMode = "albums" | "playlists";
 
+// Cap how many covers the showcase cycles through. Plenty of variety for a
+// screensaver while bounding how many images the TV WebView can hold at once.
+const MAX_SHOWCASE = 100;
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 const MusicLibrary: React.FC = () => {
+  const ambient = isAmbient();
   const { library, getLibrary, playlists, getPlaylists, playAlbum, playPlaylist } = useLibraryStore((state) => state);
   const {
     configuration: { plexToken, intervalBetweenAlbums },
   } = useUserStore((state) => state);
-  const { selectedMediaPlayer } = useMediaPlayerStore((state) => state);
+  const { selectedMediaPlayer, mediaPlayers, getMediaPlayers, update } = useMediaPlayerStore((state) => state);
   const [, setLocation] = useLocation();
   const [mode, setMode] = useState<LibraryMode>("albums");
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isInteracting, setIsInteracting] = useState(false);
+  const interactTimeout = useRef<ReturnType<typeof setTimeout>>();
 
-  // Flatten every music library, not just the first one (each is already
-  // randomly sorted and capped server-side).
-  const albums = useMemo(() => library.flatMap((item) => item.Metadata ?? []), [library]);
+  // Source the library/playback from the selected player, or the first available
+  // one — so the showcase works even when nothing has been "selected" yet (the
+  // ambient/screensaver boot path, which used to bounce back to "/").
+  const sourcePlayer = selectedMediaPlayer ?? mediaPlayers[0];
+
+  const albums = useMemo(() => {
+    const all = library.flatMap((item) => item.Metadata ?? []);
+    return shuffle(all).slice(0, MAX_SHOWCASE);
+  }, [library]);
 
   useEffect(() => {
-    if (!selectedMediaPlayer || !plexToken) {
-      return;
+    if (!sourcePlayer && plexToken && !mediaPlayers.length) {
+      getMediaPlayers();
     }
-    if (!library?.length) {
-      getLibrary(selectedMediaPlayer);
-    }
-  }, [library, getLibrary, selectedMediaPlayer, plexToken]);
+  }, [sourcePlayer, plexToken, mediaPlayers.length, getMediaPlayers]);
 
   useEffect(() => {
-    if (mode === "playlists" && selectedMediaPlayer && plexToken && !playlists.length) {
-      getPlaylists(selectedMediaPlayer);
+    if (sourcePlayer && plexToken && !library?.length) {
+      getLibrary(sourcePlayer);
     }
-  }, [mode, playlists.length, getPlaylists, selectedMediaPlayer, plexToken]);
+  }, [sourcePlayer, plexToken, library, getLibrary]);
 
-  // Redirect out of render, not during it (the old code called setLocation while
-  // rendering, which React warns about and can loop).
   useEffect(() => {
-    if (!selectedMediaPlayer) {
-      setLocation("/");
+    if (mode === "playlists" && sourcePlayer && plexToken && !playlists.length) {
+      getPlaylists(sourcePlayer);
     }
-  }, [selectedMediaPlayer, setLocation]);
+  }, [mode, playlists.length, getPlaylists, sourcePlayer, plexToken]);
+
+  // Screensaver behaviour: while the gallery is showing, poll the players and
+  // jump back to Now Playing as soon as any device starts playing.
+  useEffect(() => {
+    if (mode !== "albums" || !plexToken) return;
+    const id = setInterval(async () => {
+      if (isInteracting) return;
+      const players = useMediaPlayerStore.getState().mediaPlayers;
+      for (const p of players) {
+        await update(p);
+      }
+      if (useMediaPlayerStore.getState().mediaPlayers.some((p) => p.state === "playing")) {
+        setLocation("/");
+      }
+    }, 8000);
+    return () => clearInterval(id);
+  }, [mode, plexToken, isInteracting, update, setLocation]);
+
+  const handleInteraction = () => {
+    if (ambient) return; // passive display never shows chrome
+    setIsInteracting(true);
+    clearTimeout(interactTimeout.current);
+    interactTimeout.current = setTimeout(() => setIsInteracting(false), 5000);
+  };
+  const chromeVisible = !ambient && isInteracting;
 
   const handlePlayAlbum = (ratingKey: string) => {
-    if (!selectedMediaPlayer) return;
-    playAlbum(selectedMediaPlayer, ratingKey);
+    if (!sourcePlayer) return;
+    playAlbum(sourcePlayer, ratingKey);
     setLocation("/");
   };
 
   const handlePlayPlaylist = (ratingKey: string) => {
-    if (!selectedMediaPlayer) return;
-    playPlaylist(selectedMediaPlayer, ratingKey);
+    if (!sourcePlayer) return;
+    playPlaylist(sourcePlayer, ratingKey);
     setLocation("/");
   };
 
-  if (!selectedMediaPlayer) {
+  if (!sourcePlayer) {
     return <Spinner open />;
   }
 
   const showAlbumsSpinner = mode === "albums" && !albums.length;
   const showPlaylistsSpinner = mode === "playlists" && !playlists.length;
 
+  // Only mount the image for the current cover and its immediate neighbours
+  // (wrap-aware) so the WebView decodes ~3 images, not all 100.
+  const near = (idx: number) => {
+    const d = Math.abs(idx - currentIndex);
+    return Math.min(d, albums.length - d) <= 1;
+  };
+
   return (
-    <Box sx={{ backgroundColor: "black", minHeight: "100vh" }}>
+    <Box
+      onMouseMove={handleInteraction}
+      onTouchStart={handleInteraction}
+      sx={{ backgroundColor: "black", minHeight: "100vh", overflow: "hidden" }}
+    >
       <Grid
         container
         justifyContent="space-between"
         alignItems="center"
-        sx={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 2, padding: "8px 16px" }}
+        sx={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 2,
+          padding: "8px 16px",
+          opacity: chromeVisible ? 1 : 0,
+          pointerEvents: chromeVisible ? "auto" : "none",
+          transition: "opacity 0.4s ease",
+        }}
       >
         <IconButton onClick={() => setLocation("/")} aria-label="back to players">
           <ArrowBack color="secondary" fontSize="large" />
@@ -94,31 +159,69 @@ const MusicLibrary: React.FC = () => {
         <Carousel
           showThumbs={false}
           showIndicators={false}
-          centerMode
+          showStatus={false}
+          animationHandler="fade"
+          swipeable={false}
+          stopOnHover={false}
+          transitionTime={2000}
           autoPlay
           infiniteLoop
-          swipeable
-          showStatus={false}
           interval={intervalBetweenAlbums * 1000}
+          onChange={(i) => setCurrentIndex(i)}
         >
-          {albums.map((album) => (
-            <Container key={album.key}>
-              <AlbumCover mediaUrl={album.thumb} />
-              <Grid container className="legend" justifyContent="space-between" alignItems="center">
-                <IconButton onClick={() => handlePlayAlbum(album.ratingKey)} aria-label={`play ${album.title}`}>
-                  <PlayArrow color="secondary" fontSize="large" />
-                </IconButton>
-                <Box>
-                  <Typography variant="h5" color="white">
-                    {album.title}
-                  </Typography>
-                  <Typography variant="subtitle1" color="white">
-                    {album.parentTitle}
-                  </Typography>
-                </Box>
-                <div /> {/* Empty div for spacing */}
-              </Grid>
-            </Container>
+          {albums.map((album, idx) => (
+            <Box key={album.key} sx={{ position: "relative", height: "100vh" }}>
+              <AlbumCover
+                mediaUrl={near(idx) ? album.thumb : undefined}
+                drift={idx === currentIndex}
+                driftDurationMs={intervalBetweenAlbums * 1000}
+              />
+              <Box
+                sx={{
+                  position: "absolute",
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  pt: 12,
+                  pb: { xs: 4, md: 6 },
+                  px: 4,
+                  background: "linear-gradient(transparent, rgba(0,0,0,0.7))",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 0.5,
+                  textAlign: "center",
+                  pointerEvents: "none",
+                }}
+              >
+                {chromeVisible && (
+                  <IconButton
+                    onClick={() => handlePlayAlbum(album.ratingKey)}
+                    aria-label={`play ${album.title}`}
+                    sx={{ pointerEvents: "auto", mb: 1 }}
+                  >
+                    <PlayArrow color="primary" sx={{ fontSize: 56 }} />
+                  </IconButton>
+                )}
+                <Typography
+                  variant="h2"
+                  sx={{
+                    color: "#fff",
+                    fontWeight: 600,
+                    textShadow: "0 2px 16px rgba(0,0,0,0.7)",
+                    maxWidth: "92vw",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {album.title}
+                </Typography>
+                <Typography variant="h5" sx={{ color: "rgba(255,255,255,0.82)", textShadow: "0 1px 10px rgba(0,0,0,0.7)" }}>
+                  {[album.parentTitle, album.year, album.Genre?.[0]?.tag].filter(Boolean).join("  ·  ")}
+                </Typography>
+              </Box>
+            </Box>
           ))}
         </Carousel>
       ) : (
