@@ -40,6 +40,49 @@ export async function getUser(token: string): Promise<PlexUser> {
 }
 
 /**
+ * Builds a synthetic "player" that points at the Plex server itself. The album
+ * library only needs the server (URI + token), not a real client — so this lets
+ * the showcase run 24/7 as a screensaver even when no Plexamp/client/Sonos is
+ * awake. It must NOT be used for playback (there's no client to play on).
+ */
+export async function getServerPlayer(token: string): Promise<MediaPlayer | undefined> {
+  const response = await fetch(`https://plex.tv/api/v2/resources`, {
+    headers: getHeaders(token),
+    method: "GET",
+  });
+  if (response.status === 401) {
+    throw new Error("The Plex token is invalid! Please update it in the settings. You are going to be redirected", {
+      cause: "token",
+    });
+  }
+  const resources = await response.json();
+  const server = getServerInfo(resources);
+  if (!server) {
+    return undefined;
+  }
+  return {
+    name: "What's Playing",
+    product: "What's Playing",
+    productVersion: "1.0",
+    clientIdentifier: getClientIdentifier(),
+    protocol: server.protocol,
+    address: server.address,
+    port: server.port,
+    uri: server.uri,
+    token: token,
+    server: server,
+    state: "unknown",
+    shuffle: "0",
+    repeat: "0",
+    volume_level: 0,
+    is_volume_muted: false,
+    duration: 0,
+    time: 0,
+    isServer: true,
+  };
+}
+
+/**
  * Function that gets all the media players available in the network.
  * It fetches the resources from the plex.tv API and filters the clients and sonos resources.
  * @returns An array of media players sorted by name and state.

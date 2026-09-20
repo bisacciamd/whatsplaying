@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { PlexUser } from "./server.interface";
 import { Lyrics, MediaPlayer, MediaPlayerState } from "./media-player.type";
 import { getLyrics, playOnPlayer, sendPlayBackCommand, setParameterCommand, updateMediaPlayer } from "./media_player";
-import { getMediaPlayers, getUser } from "./server";
+import { getMediaPlayers, getServerPlayer, getUser } from "./server";
 import { getLibrary, getPlaylists } from "./library";
 import { LibraryState } from "./library.interface";
 import { devtools } from "zustand/middleware";
@@ -64,8 +64,12 @@ export const useLibraryStore = create<LibraryState>(
       library: [],
       playlists: [],
       getLibrary: async (player: MediaPlayer) => {
-        const library = await getLibrary(player, useUserStore.getState().configuration.hideLibraries);
-        set({ library });
+        try {
+          const library = await getLibrary(player, useUserStore.getState().configuration.hideLibraries);
+          set({ library });
+        } catch (e: any) {
+          pushError(e?.message ?? "Could not load the album library");
+        }
       },
       getPlaylists: async (player: MediaPlayer) => {
         try {
@@ -110,6 +114,24 @@ export const useMediaPlayerStore = create<MediaPlayerState>(
         try {
           const mediaPlayers = await getMediaPlayers(useUserStore.getState().configuration.plexToken);
           set({ mediaPlayers });
+        } catch (e: unknown) {
+          if (e instanceof Error) {
+            set({ error: [...get().error, e.message] });
+            if (e.cause === "token") {
+              setTimeout(() => {
+                window.location.href = "/config";
+              }, 5000);
+            }
+          }
+        }
+      },
+      serverPlayer: undefined,
+      getServerPlayer: async () => {
+        try {
+          const serverPlayer = await getServerPlayer(useUserStore.getState().configuration.plexToken);
+          if (serverPlayer) {
+            set({ serverPlayer });
+          }
         } catch (e: unknown) {
           if (e instanceof Error) {
             set({ error: [...get().error, e.message] });

@@ -29,17 +29,18 @@ const MusicLibrary: React.FC = () => {
   const {
     configuration: { plexToken, intervalBetweenAlbums },
   } = useUserStore((state) => state);
-  const { selectedMediaPlayer, mediaPlayers, getMediaPlayers, update } = useMediaPlayerStore((state) => state);
+  const { selectedMediaPlayer, mediaPlayers, serverPlayer, getMediaPlayers, getServerPlayer, update } =
+    useMediaPlayerStore((state) => state);
   const [, setLocation] = useLocation();
   const [mode, setMode] = useState<LibraryMode>("albums");
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isInteracting, setIsInteracting] = useState(false);
   const interactTimeout = useRef<ReturnType<typeof setTimeout>>();
 
-  // Source the library/playback from the selected player, or the first available
-  // one — so the showcase works even when nothing has been "selected" yet (the
-  // ambient/screensaver boot path, which used to bounce back to "/").
-  const sourcePlayer = selectedMediaPlayer ?? mediaPlayers[0];
+  // Source the library from the selected player, the first real client, or —
+  // crucially for a screensaver — the Plex server itself when no client/Sonos is
+  // awake. The album library only needs the server, so it can run 24/7.
+  const sourcePlayer = selectedMediaPlayer ?? mediaPlayers[0] ?? serverPlayer;
 
   const albums = useMemo(() => {
     const all = library.flatMap((item) => item.Metadata ?? []);
@@ -47,10 +48,13 @@ const MusicLibrary: React.FC = () => {
   }, [library]);
 
   useEffect(() => {
-    if (!sourcePlayer && plexToken && !mediaPlayers.length) {
-      getMediaPlayers();
-    }
-  }, [sourcePlayer, plexToken, mediaPlayers.length, getMediaPlayers]);
+    if (!plexToken) return;
+    // Discover real players (for playback + return-to-now-playing) and, in
+    // parallel, get the server fallback so the gallery has a source even with
+    // zero awake players.
+    if (!mediaPlayers.length) getMediaPlayers();
+    if (!serverPlayer) getServerPlayer();
+  }, [plexToken, mediaPlayers.length, serverPlayer, getMediaPlayers, getServerPlayer]);
 
   useEffect(() => {
     if (sourcePlayer && plexToken && !library?.length) {
@@ -64,22 +68,31 @@ const MusicLibrary: React.FC = () => {
     }
   }, [mode, playlists.length, getPlaylists, sourcePlayer, plexToken]);
 
-  // Screensaver behaviour: while the gallery is showing, poll the players and
-  // jump back to Now Playing as soon as any device starts playing.
+  // Screensaver behaviour: while the gallery is showing, refresh the player list
+  // (to catch a device waking up) and their states, and jump back to Now Playing
+  // as soon as anything starts playing.
   useEffect(() => {
     if (mode !== "albums" || !plexToken) return;
-    const id = setInterval(async () => {
-      if (isInteracting) return;
-      const players = useMediaPlayerStore.getState().mediaPlayers;
-      for (const p of players) {
-        await update(p);
+    let running = false;
+    const tick = async () => {
+      if (running || isInteracting) return;
+      running = true;
+      try {
+        await getMediaPlayers();
+        const players = useMediaPlayerStore.getState().mediaPlayers;
+        for (const p of players) {
+          await update(p);
+        }
+        if (useMediaPlayerStore.getState().mediaPlayers.some((p) => p.state === "playing")) {
+          setLocation("/");
+        }
+      } finally {
+        running = false;
       }
-      if (useMediaPlayerStore.getState().mediaPlayers.some((p) => p.state === "playing")) {
-        setLocation("/");
-      }
-    }, 8000);
+    };
+    const id = setInterval(tick, 10000);
     return () => clearInterval(id);
-  }, [mode, plexToken, isInteracting, update, setLocation]);
+  }, [mode, plexToken, isInteracting, getMediaPlayers, update, setLocation]);
 
   const handleInteraction = () => {
     if (ambient) return; // passive display never shows chrome
@@ -89,15 +102,18 @@ const MusicLibrary: React.FC = () => {
   };
   const chromeVisible = !ambient && isInteracting;
 
+  // Playback needs a real client to play ON — never the synthetic server source.
+  const playbackTarget = selectedMediaPlayer ?? mediaPlayers.find((p) => !p.isServer);
+
   const handlePlayAlbum = (ratingKey: string) => {
-    if (!sourcePlayer) return;
-    playAlbum(sourcePlayer, ratingKey);
+    if (!playbackTarget) return;
+    playAlbum(playbackTarget, ratingKey);
     setLocation("/");
   };
 
   const handlePlayPlaylist = (ratingKey: string) => {
-    if (!sourcePlayer) return;
-    playPlaylist(sourcePlayer, ratingKey);
+    if (!playbackTarget) return;
+    playPlaylist(playbackTarget, ratingKey);
     setLocation("/");
   };
 
