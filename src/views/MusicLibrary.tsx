@@ -33,7 +33,6 @@ const MusicLibrary: React.FC = () => {
     useMediaPlayerStore((state) => state);
   const [, setLocation] = useLocation();
   const [mode, setMode] = useState<LibraryMode>("albums");
-  const [currentIndex, setCurrentIndex] = useState(0);
   const [isInteracting, setIsInteracting] = useState(false);
   const interactTimeout = useRef<ReturnType<typeof setTimeout>>();
 
@@ -124,13 +123,6 @@ const MusicLibrary: React.FC = () => {
   const showAlbumsSpinner = mode === "albums" && !albums.length;
   const showPlaylistsSpinner = mode === "playlists" && !playlists.length;
 
-  // Only mount the image for the current cover and its immediate neighbours
-  // (wrap-aware) so the WebView decodes ~3 images, not all 100.
-  const near = (idx: number) => {
-    const d = Math.abs(idx - currentIndex);
-    return Math.min(d, albums.length - d) <= 1;
-  };
-
   return (
     <Box
       onMouseMove={handleInteraction}
@@ -176,22 +168,17 @@ const MusicLibrary: React.FC = () => {
           showThumbs={false}
           showIndicators={false}
           showStatus={false}
-          animationHandler="fade"
-          swipeable={false}
-          stopOnHover={false}
-          transitionTime={2000}
+          showArrows={false}
           autoPlay
           infiniteLoop
+          swipeable
+          stopOnHover={false}
+          transitionTime={1200}
           interval={intervalBetweenAlbums * 1000}
-          onChange={(i) => setCurrentIndex(i)}
         >
-          {albums.map((album, idx) => (
+          {albums.map((album) => (
             <Box key={album.key} sx={{ position: "relative", height: "100vh" }}>
-              <AlbumCover
-                mediaUrl={near(idx) ? album.thumb : undefined}
-                drift={idx === currentIndex}
-                driftDurationMs={intervalBetweenAlbums * 1000}
-              />
+              <AlbumCover mediaUrl={album.thumb} drift driftDurationMs={intervalBetweenAlbums * 1000} />
               <Box
                 sx={{
                   position: "absolute",

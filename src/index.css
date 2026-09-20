@@ -28,7 +28,9 @@ code {
   }
 }
 
-.wp-cover-drift {
+/* Only animate the cover on the visible (selected) carousel slide, so we don't
+ * run a transform animation on every off-screen slide at once. */
+.carousel .slide.selected .wp-cover-drift {
   animation: wp-kenburns var(--wp-drift-dur, 30s) ease-in-out infinite alternate;
   will-change: transform;
 }
