@@ -5,6 +5,7 @@ import { MediaDisplay } from "../components/MediaDisplay";
 import { useMediaPlayerStore, useUserStore } from "../store/store";
 import { Spinner } from "../components/Spinner";
 import { useLocation } from "wouter";
+import { isAmbient } from "../ambient";
 
 /**
  * Carousel component to display the media players.
@@ -18,6 +19,7 @@ export const MediaPlayers: FunctionComponent = () => {
   } = useUserStore((state) => state);
   const [, setLocation] = useLocation();
   const [showAlbumTimeout, setShowAlbumTimeout] = useState<NodeJS.Timeout | undefined>();
+  const ambient = isAmbient();
 
   useEffect(() => {
     if (!mediaPlayers?.length && plexToken) {
@@ -25,9 +27,25 @@ export const MediaPlayers: FunctionComponent = () => {
     }
   }, [mediaPlayers, getMediaPlayers]);
 
+  // Ambient (TV screensaver): the album gallery is home base. Sit on Now Playing
+  // only while something is actually playing; otherwise show the showcase — this
+  // also covers the case where there are NO players at all (which used to hang
+  // on a spinner forever), since the showcase now loads from the server.
   useEffect(() => {
-    // if no player has been playing for 60 sec, redirect to /albums
-    if (autoDisplayAlbums && (selectedMediaPlayer?.state === "stopped" || selectedMediaPlayer?.state === "unknown")) {
+    if (!ambient) return;
+    if (!mediaPlayers.some((p) => p.state === "playing")) {
+      setLocation("/albums");
+    }
+  }, [ambient, mediaPlayers, setLocation]);
+
+  useEffect(() => {
+    // Non-ambient: if the selected player has been stopped for a while, fall back
+    // to /albums (opt-in via autoDisplayAlbums).
+    if (
+      !ambient &&
+      autoDisplayAlbums &&
+      (selectedMediaPlayer?.state === "stopped" || selectedMediaPlayer?.state === "unknown")
+    ) {
       setShowAlbumTimeout(
         setTimeout(() => {
           setLocation("/albums");
@@ -45,7 +63,7 @@ export const MediaPlayers: FunctionComponent = () => {
         clearTimeout(showAlbumTimeout);
       }
     };
-  }, [selectedMediaPlayer?.state, autoDisplayAlbums]);
+  }, [selectedMediaPlayer?.state, ambient, autoDisplayAlbums, setLocation]);
 
   const customRenderItem = (
     item: any,

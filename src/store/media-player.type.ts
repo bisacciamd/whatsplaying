@@ -7,12 +7,16 @@ export type MediaPlayerState = {
   selectedMediaPlayer: MediaPlayer | undefined;
   setSelectMediaPlayer: (player: MediaPlayer) => void;
   getMediaPlayers: () => Promise<void>;
+  /** A synthetic "player" representing the Plex server itself, so the album
+   *  library can be shown even when no real client/Sonos player is awake. */
+  serverPlayer: MediaPlayer | undefined;
+  getServerPlayer: () => Promise<void>;
   play: (player: MediaPlayer) => Promise<void>;
   pause: (player: MediaPlayer) => Promise<void>;
   update: (player: MediaPlayer) => Promise<void>;
   nextTrack: (player: MediaPlayer) => Promise<void>;
   previousTrack: (player: MediaPlayer) => Promise<void>;
-  setShuffle: (player: MediaPlayer, shuffle: boolean) => Promise<void>;
+  setShuffle: (player: MediaPlayer) => Promise<void>;
   setRepeat: (player: MediaPlayer) => Promise<void>;
   muteVolume: (player: MediaPlayer) => Promise<void>;
   setVolumeLevel: (player: MediaPlayer, volume: number) => Promise<void>;
@@ -44,6 +48,8 @@ export type MediaPlayer = {
   itemType?: string;
   duration: number;
   time: number;
+  /** True for the synthetic server-only source (see MediaPlayerState.serverPlayer). */
+  isServer?: boolean;
   ratingKey?: number;
   key?: string;
   containerKey?: string;
