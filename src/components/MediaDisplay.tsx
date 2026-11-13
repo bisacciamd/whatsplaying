@@ -17,7 +17,6 @@ interface IMediaPlayerProps {
 export const MediaDisplay: FunctionComponent<IMediaPlayerProps> = ({ plexamp, isSelected }) => {
   const { update, getLyrics, setSelectMediaPlayer, setShowLyrics, showLyrics, lyricsOffset, setLyricsOffset } =
     useMediaPlayerStore((state) => state);
-  useEffect(() => {}, [isSelected, plexamp, update]);
   const [lyrics, setLyrics] = useState<Lyrics | undefined>();
   const [isInteracting, setIsInteracting] = useState(false);
   const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | undefined>();

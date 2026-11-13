@@ -3,9 +3,9 @@
   "version": "1.6.1",
   "private": true,
   "type": "module",
-  "respository": {
+  "repository": {
     "type": "git",
-    "url": "git+https://github.com/gloaysa/whatsplaying.git"
+    "url": "git+https://github.com/bisacciamd/whatsplaying.git"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",
@@ -40,6 +40,8 @@
     "@typescript-eslint/parser": "^7.2.0",
     "@vitejs/plugin-react": "^4.2.1",
     "eslint": "^8.57.0",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "eslint-plugin-react-refresh": "^0.4.7",
     "identity-obj-proxy": "^3.0.0",
     "jsdom": "^24.0.0",
     "prettier": "^3.2.5",

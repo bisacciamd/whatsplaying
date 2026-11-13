@@ -25,8 +25,11 @@ These controls are designed to be unobtrusive, appearing only when you interact 
 - **Lyrics Display**: If available, **What's Playing** can show the lyrics of the currently playing song.
 - **Device Carousel**: Browse through all your Plex devices with a simple swipe. 
 Each device is displayed as a slide in a carousel, making it easy to switch between devices.
-- **Album Library Mode**: In Album Library mode, all the albums in your library are displayed in a carousel.
-The carousel auto-plays, changing slides every few seconds. The albums are chosen at random, providing a unique and engaging experience every time.
+- **Album Library Mode**: In Album Library mode, all the albums across **all** your music libraries are displayed in a
+carousel. The carousel auto-plays, changing slides every few seconds. The albums are chosen at random, providing a
+unique and engaging experience every time.
+- **Start playback from the library**: Tap the play button on any album, or open the **Playlists** tab and tap a
+playlist, to create a play queue and start it on the currently selected device.
 - **Works with your Sonos devices**: If you start a playlist or album on a Sonos device, **What's Playing** will automatically switch to that device and display the album art.
 - **Blur Background**: The background of page is blurred with the main colors of the currently playing album.
 
@@ -66,6 +69,25 @@ automatically if your media players are stopped/unreachable for 30 seconds. Defa
 - `intervalBetweenAlbums`: OPTIONAL. This is the time in seconds between slides in the Album Library. Defaults to 30 seconds.
 
 Once you have set the configuration, if you ever want to change it again, navigate to `/config` in your browser.
+
+> **Note on precedence:** settings you save from `/config` are stored in your browser's `localStorage` and take
+> precedence over the mounted `config.json`. If you change `config.json` on the server and it doesn't seem to take
+> effect, clear the site's `localStorage` (or use a fresh browser profile) so the file is read again.
+
+## Security note about your Plex token
+
+This is a **fully client-side** app: the browser talks to Plex directly, and the `plexToken` is served to the browser
+inside `config.json`. That means:
+
+- **Any device that can reach the app can read your Plex token** (e.g. `http://<host>:5000/config.json`), and the token
+  is embedded in image URLs. A Plex token grants **account-wide** access, not just to this server.
+- Only expose this app on a **trusted LAN**, never directly on the public internet.
+- Prefer a token from a **Plex Home / managed user** with access limited to the libraries you want to show, rather than
+  your owner-account token, to limit the blast radius if the token leaks.
+- Do **not** commit a real token to `public/config.json` in this repo.
+
+Each install now also generates its own unique `X-Plex-Client-Identifier` (stored in `localStorage`), so running more
+than one instance no longer makes them collide as a single Plex client.
 
 You can optionally pass this configurations in a `config.json` file located in the root of the project. If you are using
 Docker, you can mount this file to `/app/config.json`.

@@ -12,3 +12,25 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
     monospace;
 }
+
+/*
+ * Slow Ken-Burns drift for album covers in the showcase. Keeps the bright
+ * artwork from resting on the exact same pixels for hours (OLED burn-in) and
+ * gives the ambient display a subtle sense of motion. Compositor-only
+ * (transform), so it stays cheap on a TV WebView.
+ */
+@keyframes wp-kenburns {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.06) translate(var(--wp-drift-x, 1%), var(--wp-drift-y, -1%));
+  }
+}
+
+/* Only animate the cover on the visible (selected) carousel slide, so we don't
+ * run a transform animation on every off-screen slide at once. */
+.carousel .slide.selected .wp-cover-drift {
+  animation: wp-kenburns var(--wp-drift-dur, 30s) ease-in-out infinite alternate;
+  will-change: transform;
+}

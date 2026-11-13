@@ -14,6 +14,7 @@ export const mockMediaPlayer: MediaPlayer = {
     uri: "http://localhost:3000",
     client_identifier: "Mock Server",
     protocol: "http",
+    address: "localhost",
     port: 5000,
   },
   state: "playing",

@@ -54,11 +54,14 @@ export async function updateMediaPlayer(mediaPlayer: MediaPlayer, commandId: num
       const isTidal = currentlyPlaying.attribution === "com.tidal";
       let thumbUrl = isTidal ? currentlyPlaying?.parentThumb : currentlyPlaying?.thumb;
       const thumbSize = "width=1080&height=1080";
-      const thumbParameters = `url=${thumbUrl}&quality=90&format=png&X-Plex-Token=${mediaPlayer.token}`;
-      // TODO: this is ultra hacky, need to find where in the data the provider is
+      const thumbParameters = `url=${thumbUrl}&quality=90&format=jpeg&X-Plex-Token=${mediaPlayer.token}`;
+      // The /photo/:/transcode endpoint lives on the Plex Media Server, so build
+      // it from the server URI. The old code used the *client* player's raw
+      // address:port over hard-coded https, which failed on many LANs and left
+      // the now-playing screen without artwork (upstream issue #13).
       let thumb = isTidal
         ? `https://images.plex.tv/photo/?url=${thumbUrl}`
-        : `https://${mediaPlayer.address}:${mediaPlayer.port}/photo/:/transcode?${thumbSize}&${thumbParameters}`;
+        : `${mediaPlayer.server.uri}/photo/:/transcode?${thumbSize}&${thumbParameters}`;
       mediaPlayer.metadata = {
         ...flattenMetadata(currentlyPlaying),
         thumb,
@@ -67,6 +70,10 @@ export async function updateMediaPlayer(mediaPlayer: MediaPlayer, commandId: num
     }
     return mediaPlayer;
   } catch (e: any) {
+    // Don't crash the 1s poll loop, but no longer swallow silently: an
+    // unreachable server/player here is exactly why metadata "just doesn't load"
+    // with no clue in the console (upstream issue #13).
+    console.warn(`Failed to update media player "${mediaPlayer.name}":`, e);
     return mediaPlayer;
   }
 }
@@ -94,7 +101,8 @@ const getPlayQueues = async (mediaPlayer: MediaPlayer): Promise<Queue | undefine
   if (!mediaPlayer.containerKey) {
     return undefined;
   }
-  const response = await fetch(`https://${mediaPlayer.address}:${mediaPlayer.port}${mediaPlayer.containerKey}`, {
+  // The play queue is served by the Plex Media Server, not the client player.
+  const response = await fetch(`${mediaPlayer.server.uri}${mediaPlayer.containerKey}`, {
     headers: mediaPlayerHeaders(mediaPlayer),
     method: "GET",
   });
@@ -108,16 +116,76 @@ export const getLyrics = async (mediaPlayer: MediaPlayer): Promise<Lyrics | unde
   if (!mediaPlayer.metadata?.Media.Part.Stream?.key) {
     return undefined;
   }
-  const baseUrl = `https://${mediaPlayer.address}:${mediaPlayer.port}${mediaPlayer.metadata?.Media.Part.Stream?.key}`;
+  const baseUrl = `${mediaPlayer.server.uri}${mediaPlayer.metadata?.Media.Part.Stream?.key}`;
   const response = await fetch(baseUrl, {
     headers: mediaPlayerHeaders(mediaPlayer),
     method: "GET",
   });
   if (response.ok) {
     const data = await response.json();
-    if (Object.keys(data.MediaContainer.Lyrics?.[0]).length === 0) {
+    const lyrics = data.MediaContainer?.Lyrics?.[0];
+    // Guard the empty/absent case: `Object.keys(undefined)` used to throw here
+    // and escape as an unhandled rejection.
+    if (!lyrics || Object.keys(lyrics).length === 0) {
       return undefined;
     }
-    return data.MediaContainer.Lyrics[0];
+    return lyrics;
   }
 };
+
+/**
+ * Creates a play queue on the server for the given album/playlist and starts it
+ * on the target player.
+ *
+ * NOTE: Plex's playMedia protocol varies between players (Plexamp, Plex for
+ * clients, Sonos). This follows the documented server-play-queue flow and should
+ * be verified against your actual devices.
+ *
+ * @param player   the client that should start playing
+ * @param sourceUri the library uri, e.g. `/library/metadata/{ratingKey}` for an
+ *                  album or `/playlists/{id}/items` for a playlist
+ * @param commandId monotonically increasing command id for the player subscription
+ */
+export async function playOnPlayer(player: MediaPlayer, sourceUri: string, commandId: number): Promise<void> {
+  const { server } = player;
+  const queueUri = `server://${server.client_identifier}/com.plexapp.plugins.library${sourceUri}`;
+  const createQueue = new URLSearchParams({
+    type: "audio",
+    uri: queueUri,
+    shuffle: "0",
+    repeat: "0",
+    continuous: "1",
+  });
+  const queueResponse = await fetch(`${server.uri}/playQueues?${createQueue.toString()}`, {
+    headers: mediaPlayerHeaders(player),
+    method: "POST",
+  });
+  if (!queueResponse.ok) {
+    throw new Error(`Could not create play queue (${queueResponse.status})`);
+  }
+  const queue = await queueResponse.json();
+  const playQueueID = queue?.MediaContainer?.playQueueID;
+  if (!playQueueID) {
+    throw new Error("Server did not return a play queue id");
+  }
+
+  const playParams = new URLSearchParams({
+    type: "music",
+    protocol: server.protocol,
+    address: server.address,
+    port: String(server.port),
+    machineIdentifier: server.client_identifier,
+    token: player.token,
+    key: sourceUri,
+    containerKey: `/playQueues/${playQueueID}`,
+    offset: "0",
+    commandID: String(commandId),
+  });
+  const playResponse = await fetch(`${player.uri}/player/playback/playMedia?${playParams.toString()}`, {
+    headers: mediaPlayerHeaders(player),
+    method: "GET",
+  });
+  if (!playResponse.ok) {
+    throw new Error(`Could not start playback on ${player.name} (${playResponse.status})`);
+  }
+}

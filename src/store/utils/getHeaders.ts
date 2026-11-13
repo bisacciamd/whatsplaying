@@ -1,4 +1,5 @@
 import { MediaPlayer } from "../media-player.type";
+import { getClientIdentifier } from "./clientIdentifier";
 
 export const mediaPlayerHeaders = (player: MediaPlayer) => ({
   "X-Plex-Version": player.productVersion,
@@ -8,5 +9,5 @@ export const mediaPlayerHeaders = (player: MediaPlayer) => ({
   "X-Plex-Token": player.token,
   "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
   Accept: "application/json",
-  "X-Plex-Client-Identifier": "Plex-Client-Identifier",
+  "X-Plex-Client-Identifier": getClientIdentifier(),
 });

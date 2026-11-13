@@ -3,7 +3,30 @@ import { MediaPlayer } from "./media-player.type";
 export type LibraryState = {
   library: LibraryItem[];
   getLibrary: (player: MediaPlayer) => Promise<void>;
+  playlists: Playlist[];
+  getPlaylists: (player: MediaPlayer) => Promise<void>;
+  /** Create a play queue from an album's ratingKey and start it on the player. */
+  playAlbum: (player: MediaPlayer, ratingKey: string) => Promise<void>;
+  /** Create a play queue from a playlist's ratingKey and start it on the player. */
+  playPlaylist: (player: MediaPlayer, ratingKey: string) => Promise<void>;
 };
+
+export interface Playlist {
+  ratingKey: string;
+  key: string;
+  guid: string;
+  type: string;
+  title: string;
+  summary: string;
+  smart: boolean;
+  playlistType: string;
+  composite: string;
+  thumb: string;
+  duration: number;
+  leafCount: number;
+  addedAt: number;
+  updatedAt: number;
+}
 
 export interface Library {
   MediaContainer: MediaContainer;
