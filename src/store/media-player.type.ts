@@ -4,6 +4,8 @@ export type MediaPlayerState = {
   error: string[];
   removeError: (index: number) => void;
   mediaPlayers: MediaPlayer[];
+  /** True once at least one getMediaPlayers() call has finished (success or error). */
+  mediaPlayersLoaded: boolean;
   selectedMediaPlayer: MediaPlayer | undefined;
   setSelectMediaPlayer: (player: MediaPlayer) => void;
   getMediaPlayers: () => Promise<void>;

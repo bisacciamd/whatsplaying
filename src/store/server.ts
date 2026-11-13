@@ -56,7 +56,7 @@ export async function getServerPlayer(token: string): Promise<MediaPlayer | unde
     });
   }
   const resources = await response.json();
-  const server = getServerInfo(resources);
+  const server = await getServerInfo(resources, token);
   if (!server) {
     return undefined;
   }
@@ -99,7 +99,7 @@ export async function getMediaPlayers(token: string): Promise<MediaPlayer[]> {
         cause: "token",
       });
     }
-    const server = getServerInfo(resources);
+    const server = await getServerInfo(resources, token);
     if (!server) {
       throw new Error("We couldn't find a server in your local network :(");
     }
@@ -162,19 +162,79 @@ async function getSonosResource(server: BaseMediaPlayerServer, token: string): P
  * @returns The server info to be used in the media players.
  * @param resources
  */
-function getServerInfo(resources: PlexResource[]): BaseMediaPlayerServer | undefined {
+/**
+ * Resolves the Plex server's connection by actually probing it. Plex lists several
+ * addresses (LAN http, WAN http, and with includeHttps=1 the plex.direct https
+ * ones). Picking statically broke two real cases: off the home LAN (e.g. over
+ * Tailscale) the LAN address is unreachable, and on an https page (the Caddy
+ * :15056 vhost) Safari blocks any http:// Plex URL as mixed content — both left
+ * the app on a spinner forever. So: gather every server connection, drop http ones
+ * when the page is https, and use the first that answers /identity, preferring
+ * local, then https. The result is cached for a while so polling stays cheap.
+ */
+let cachedServer: { info: BaseMediaPlayerServer; at: number } | undefined;
+const SERVER_CACHE_MS = 10 * 60 * 1000;
+
+async function probe(uri: string, token: string, timeoutMs = 4000): Promise<boolean> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(`${uri}/identity`, {
+      headers: { Accept: "application/json", "X-Plex-Token": token },
+      signal: ctrl.signal,
+    });
+    return r.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function getServerInfo(resources: PlexResource[], token: string): Promise<BaseMediaPlayerServer | undefined> {
   const server = resources.find((resource) => resource.provides === "server");
   if (!server) {
     return undefined;
   }
-  const connection = selectConnection(server.connections);
-  return {
+  if (cachedServer && cachedServer.info.client_identifier === server.clientIdentifier &&
+      Date.now() - cachedServer.at < SERVER_CACHE_MS) {
+    return cachedServer.info;
+  }
+
+  let connections: PlexConnection[] = [...server.connections];
+  try {
+    const r = await fetch("https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1", {
+      headers: getHeaders(token),
+      method: "GET",
+    });
+    if (r.ok) {
+      const httpsResources: PlexResource[] = await r.json();
+      const same = httpsResources.find((x) => x.clientIdentifier === server.clientIdentifier);
+      if (same) connections = [...same.connections, ...connections];
+    }
+  } catch {
+    /* fall back to the plain list */
+  }
+  const seen = new Set<string>();
+  connections = connections.filter((c) => !seen.has(c.uri) && seen.add(c.uri));
+  if (window.location.protocol === "https:") {
+    connections = connections.filter((c) => c.protocol === "https");
+  }
+  const rank = (c: PlexConnection) => (c.relay ? 4 : 0) + (c.local ? 0 : 2) + (c.protocol === "https" ? 0 : 1);
+  connections.sort((a, b) => rank(a) - rank(b));
+
+  // Probe all at once; take the best-ranked one that answered.
+  const results = await Promise.all(connections.map((c) => probe(c.uri, token)));
+  const connection = connections.find((_, i) => results[i]) ?? (connections.length ? connections[0] : selectConnection(server.connections));
+  const info: BaseMediaPlayerServer = {
     client_identifier: server.clientIdentifier,
     protocol: connection.protocol,
     address: connection.address,
     port: connection.port,
     uri: connection.uri,
   };
+  if (results.some(Boolean)) cachedServer = { info, at: Date.now() };
+  return info;
 }
 
 /**

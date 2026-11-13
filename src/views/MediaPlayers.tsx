@@ -13,7 +13,9 @@ import { isAmbient } from "../ambient";
  * Takes the whole available width and height.
  */
 export const MediaPlayers: FunctionComponent = () => {
-  const { mediaPlayers, getMediaPlayers, selectedMediaPlayer } = useMediaPlayerStore((state) => state);
+  const { mediaPlayers, mediaPlayersLoaded, getMediaPlayers, selectedMediaPlayer } = useMediaPlayerStore(
+    (state) => state,
+  );
   const {
     configuration: { plexToken, autoDisplayAlbums },
   } = useUserStore((state) => state);
@@ -22,10 +24,24 @@ export const MediaPlayers: FunctionComponent = () => {
   const ambient = isAmbient();
 
   useEffect(() => {
-    if (!mediaPlayers?.length && plexToken) {
+    if (mediaPlayers?.length || !plexToken) return;
+    // First load: fetch now. After an empty answer, poll gently instead of
+    // hammering plex.tv in a tight loop (each empty result is a new array).
+    if (!mediaPlayersLoaded) {
       getMediaPlayers();
+      return;
     }
-  }, [mediaPlayers, getMediaPlayers]);
+    const t = setTimeout(() => getMediaPlayers(), 10000);
+    return () => clearTimeout(t);
+  }, [mediaPlayers, mediaPlayersLoaded, plexToken, getMediaPlayers]);
+
+  // Non-ambient with NO players awake (the usual state when nothing plays): the
+  // page used to sit on a spinner forever. The album gallery loads from the
+  // server alone, so go there — it returns to Now Playing when music starts.
+  useEffect(() => {
+    if (ambient || !mediaPlayersLoaded || mediaPlayers.length) return;
+    setLocation("/albums");
+  }, [ambient, mediaPlayersLoaded, mediaPlayers, setLocation]);
 
   // Ambient (TV screensaver): the album gallery is home base. Sit on Now Playing
   // only while something is actually playing; otherwise show the showcase — this

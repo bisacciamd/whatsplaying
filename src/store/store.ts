@@ -106,6 +106,7 @@ export const useMediaPlayerStore = create<MediaPlayerState>(
         set({ error });
       },
       mediaPlayers: [],
+      mediaPlayersLoaded: false,
       selectedMediaPlayer: undefined,
       setSelectMediaPlayer: (player: MediaPlayer) => {
         set({ selectedMediaPlayer: player });
@@ -113,8 +114,9 @@ export const useMediaPlayerStore = create<MediaPlayerState>(
       getMediaPlayers: async () => {
         try {
           const mediaPlayers = await getMediaPlayers(useUserStore.getState().configuration.plexToken);
-          set({ mediaPlayers });
+          set({ mediaPlayers, mediaPlayersLoaded: true });
         } catch (e: unknown) {
+          set({ mediaPlayersLoaded: true });
           if (e instanceof Error) {
             set({ error: [...get().error, e.message] });
             if (e.cause === "token") {
