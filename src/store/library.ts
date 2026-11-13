@@ -5,11 +5,13 @@ import { MediaPlayer } from "./media-player.type";
 // Cap how many albums we pull (and therefore how many <img> the carousel mounts)
 // per music section. Without this, a large library fetched every album and
 // mounted thousands of DOM nodes, hanging the Album Library (upstream issue #12).
-const MAX_ALBUMS_PER_LIBRARY = 250;
+// The showcase only ever shows 100 (MAX_SHOWCASE), and every extra album costs
+// seconds over the WAN, so fetch just that many.
+const MAX_ALBUMS_PER_LIBRARY = 100;
 
 const buildThumb = (player: MediaPlayer, thumbUrl: string | undefined): string => {
   const thumbSize = "width=1080&height=1080";
-  const thumbParameters = `url=${thumbUrl}&quality=90&format=jpeg&X-Plex-Token=${player.token}`;
+  const thumbParameters = `url=${thumbUrl}&quality=80&format=jpeg&X-Plex-Token=${player.token}`;
   // Build against the server URI. The old code produced a scheme-less
   // "address:port/..." string; `new URL()` in <AlbumCover> then threw and blanked
   // the whole Album Library to a black screen (upstream issue #12).

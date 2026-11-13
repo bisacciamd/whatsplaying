@@ -13,7 +13,9 @@ interface IAlbumProps {
 const targetPx = (): number => {
   const h = window.innerHeight || 1080;
   const dpr = window.devicePixelRatio || 1;
-  return Math.min(2160, Math.round(h * dpr));
+  // Capped at 1440: on the busy NAS a 2160px transcode took ~10 s per cover,
+  // and album art is rarely sharper than that anyway.
+  return Math.min(1440, Math.round(h * dpr));
 };
 
 export const AlbumCover: FunctionComponent<IAlbumProps> = ({ mediaUrl, drift, driftDurationMs }) => {

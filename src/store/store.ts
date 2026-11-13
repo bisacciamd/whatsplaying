@@ -1,3 +1,4 @@
+import { LibraryItem } from "./library.interface";
 import { create } from "zustand";
 import { PlexUser } from "./server.interface";
 import { Lyrics, MediaPlayer, MediaPlayerState } from "./media-player.type";
@@ -64,9 +65,27 @@ export const useLibraryStore = create<LibraryState>(
       library: [],
       playlists: [],
       getLibrary: async (player: MediaPlayer) => {
+        // Start instantly from the album list saved on the last visit (same server
+        // and token), then fetch a fresh random batch for NEXT time — swapping it
+        // in now would reshuffle the carousel under the viewer. Over the WAN on a
+        // busy NAS the fetch alone took ~8 s, which is most of the "takes forever".
+        const cacheKey = "wp-library-cache";
+        let cached: { uri: string; token: string; library: LibraryItem[] } | undefined;
+        try {
+          cached = JSON.parse(localStorage.getItem(cacheKey) ?? "null") ?? undefined;
+        } catch {
+          cached = undefined;
+        }
+        const usable = cached && cached.uri === player.server.uri && cached.token === player.token && cached.library?.length;
+        if (usable) set({ library: cached!.library });
         try {
           const library = await getLibrary(player, useUserStore.getState().configuration.hideLibraries);
-          set({ library });
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify({ uri: player.server.uri, token: player.token, library }));
+          } catch {
+            /* storage full/blocked: just no fast start next time */
+          }
+          if (!usable) set({ library });
         } catch (e: any) {
           pushError(e?.message ?? "Could not load the album library");
         }

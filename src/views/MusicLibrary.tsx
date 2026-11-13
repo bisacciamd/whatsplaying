@@ -185,15 +185,19 @@ const MusicLibrary: React.FC = () => {
                   bottom: 0,
                   left: 0,
                   right: 0,
-                  pt: 12,
-                  pb: { xs: 4, md: 6 },
-                  px: 4,
-                  background: "linear-gradient(transparent, rgba(0,0,0,0.7))",
+                  // Discreet caption: small, bottom-left, translucent, over a faint
+                  // gradient, so the cover stays the subject (was a big centred h2
+                  // over a 70% black band).
+                  pt: 8,
+                  pb: { xs: 2.5, md: 4 },
+                  px: { xs: 2.5, md: 5 },
+                  background: "linear-gradient(transparent, rgba(0,0,0,0.35))",
                   display: "flex",
                   flexDirection: "column",
-                  alignItems: "center",
-                  gap: 0.5,
-                  textAlign: "center",
+                  alignItems: "flex-start",
+                  gap: 0.25,
+                  textAlign: "left",
+                  opacity: 0.75,
                   pointerEvents: "none",
                 }}
               >
@@ -207,12 +211,13 @@ const MusicLibrary: React.FC = () => {
                   </IconButton>
                 )}
                 <Typography
-                  variant="h2"
+                  variant="h6"
                   sx={{
                     color: "#fff",
-                    fontWeight: 600,
-                    textShadow: "0 2px 16px rgba(0,0,0,0.7)",
-                    maxWidth: "92vw",
+                    fontWeight: 500,
+                    lineHeight: 1.2,
+                    textShadow: "0 1px 8px rgba(0,0,0,0.8)",
+                    maxWidth: "60vw",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
@@ -220,7 +225,11 @@ const MusicLibrary: React.FC = () => {
                 >
                   {album.title}
                 </Typography>
-                <Typography variant="h5" sx={{ color: "rgba(255,255,255,0.82)", textShadow: "0 1px 10px rgba(0,0,0,0.7)" }}>
+                <Typography
+                  variant="body2"
+                  sx={{ color: "rgba(255,255,255,0.75)", textShadow: "0 1px 6px rgba(0,0,0,0.8)", maxWidth: "60vw" }}
+                  noWrap
+                >
                   {[album.parentTitle, album.year, album.Genre?.[0]?.tag].filter(Boolean).join("  ·  ")}
                 </Typography>
               </Box>
