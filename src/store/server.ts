@@ -103,8 +103,11 @@ export async function getMediaPlayers(token: string): Promise<MediaPlayer[]> {
     if (!server) {
       throw new Error("We couldn't find a server in your local network :(");
     }
-    const clients = await getClients(resources, server, token);
-    const sonos = await getSonosResource(server, token);
+    // In parallel: a sleeping client used to hold up the Sonos lookup by its timeout.
+    const [clients, sonos] = await Promise.all([
+      getClients(resources, server, token),
+      getSonosResource(server, token),
+    ]);
 
     return (
       [...clients, ...sonos]
@@ -223,9 +226,28 @@ async function getServerInfo(resources: PlexResource[], token: string): Promise<
   const rank = (c: PlexConnection) => (c.relay ? 4 : 0) + (c.local ? 0 : 2) + (c.protocol === "https" ? 0 : 1);
   connections.sort((a, b) => rank(a) - rank(b));
 
-  // Probe all at once; take the best-ranked one that answered.
-  const results = await Promise.all(connections.map((c) => probe(c.uri, token)));
-  const connection = connections.find((_, i) => results[i]) ?? (connections.length ? connections[0] : selectConnection(server.connections));
+  // Probe all at once. Don't wait for unreachable ones to time out (off-LAN the
+  // local address only ever times out): take the first that answers, then give
+  // better-ranked ones a short grace to answer too.
+  const probes = connections.map((c) => probe(c.uri, token));
+  const firstOk = await Promise.race([
+    new Promise<number>((resolve) => probes.forEach((p, i) => p.then((ok) => ok && resolve(i)))),
+    Promise.all(probes).then(() => -1),
+  ]);
+  let idx = firstOk;
+  if (firstOk > 0) {
+    const better = await Promise.race([
+      Promise.all(probes.slice(0, firstOk)).then((rs) => rs.findIndex(Boolean)),
+      new Promise<number>((resolve) => setTimeout(() => resolve(-1), 500)),
+    ]);
+    if (better >= 0) idx = better;
+  }
+  const reachable = idx >= 0;
+  const connection = reachable
+    ? connections[idx]
+    : connections.length
+      ? connections[0]
+      : selectConnection(server.connections);
   const info: BaseMediaPlayerServer = {
     client_identifier: server.clientIdentifier,
     protocol: connection.protocol,
@@ -233,7 +255,7 @@ async function getServerInfo(resources: PlexResource[], token: string): Promise<
     port: connection.port,
     uri: connection.uri,
   };
-  if (results.some(Boolean)) cachedServer = { info, at: Date.now() };
+  if (reachable) cachedServer = { info, at: Date.now() };
   return info;
 }
 
@@ -293,7 +315,8 @@ async function getClients(
     }));
 }
 
-function fetchWithTimeout(url: string, options: RequestInit, timeout = 5000): Promise<Response> {
+// 2 s: LAN players answer in milliseconds; a sleeping one only ever times out.
+function fetchWithTimeout(url: string, options: RequestInit, timeout = 2000): Promise<Response> {
   return new Promise((resolve, reject) => {
     // Set up the timeout
     const timer = setTimeout(() => {
